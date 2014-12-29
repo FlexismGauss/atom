@@ -584,7 +584,7 @@ describe "Config", ->
 
           expect(CSON.writeFileSync.argsForCall[0][0]).toBe path.join(atom.config.configDirPath, "atom.config.json")
           writtenConfig = CSON.writeFileSync.argsForCall[0][1]
-          expect(writtenConfig).toEqual global: atom.config.settings
+          expect(writtenConfig).toEqual '*': atom.config.settings
 
       describe "when ~/.atom/config.json doesn't exist", ->
         it "writes any non-default properties to ~/.atom/config.cson", ->
@@ -599,7 +599,7 @@ describe "Config", ->
 
           expect(CSON.writeFileSync.argsForCall[0][0]).toBe path.join(atom.config.configDirPath, "atom.config.cson")
           writtenConfig = CSON.writeFileSync.argsForCall[0][1]
-          expect(writtenConfig).toEqual global: atom.config.settings
+          expect(writtenConfig).toEqual '*': atom.config.settings
 
       describe "when scoped settings are defined", ->
         it 'writes out explicitly set config settings', ->
@@ -612,7 +612,7 @@ describe "Config", ->
 
           writtenConfig = CSON.writeFileSync.argsForCall[0][1]
           expect(writtenConfig).toEqualJson
-            global:
+            '*':
               atom.config.settings
             '.ruby.source':
               foo:
@@ -643,7 +643,7 @@ describe "Config", ->
       describe "when the config file contains scoped settings", ->
         beforeEach ->
           fs.writeFileSync atom.config.configFilePath, """
-            global:
+            '*':
               foo:
                 bar: 'baz'
 
@@ -733,7 +733,7 @@ describe "Config", ->
         atom.config.configFilePath = path.join(atom.config.configDirPath, "atom.config.cson")
         expect(fs.existsSync(atom.config.configDirPath)).toBeFalsy()
         fs.writeFileSync atom.config.configFilePath, """
-          global:
+          '*':
             foo:
               bar: 'baz'
               scoped: false
@@ -795,7 +795,7 @@ describe "Config", ->
             atom.config.onDidChange('foo.scoped', scope: ['.source.ruby'], scopedSpy)
 
             fs.writeFileSync atom.config.configFilePath, """
-              global:
+              '*':
                 foo:
                   scoped: false
             """
@@ -809,7 +809,7 @@ describe "Config", ->
             atom.config.onDidChange('foo.scoped', scope: ['.source.ruby'], noChangeSpy)
 
             fs.writeFileSync atom.config.configFilePath, """
-              global:
+              '*':
                 foo:
                   bar: 'baz'
               '.source.ruby':
