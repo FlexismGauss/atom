@@ -102,18 +102,14 @@ describe "Config", ->
       expect(atom.config.set("foo.bar.baz", 42)).toBe true
       expect(atom.config.get("foo.bar.baz")).toBe 42
 
-    it "updates observers and saves when a key path is set", ->
-      observeHandler = jasmine.createSpy "observeHandler"
-      atom.config.observe "foo.bar.baz", observeHandler
-      observeHandler.reset()
-
+    it "saves the user's config to disk", ->
       atom.config.set("foo.bar.baz", 42)
-
+      advanceClock(500)
       expect(atom.config.save).toHaveBeenCalled()
-      expect(observeHandler).toHaveBeenCalledWith 42
 
     it "does not save when a non-default 'source' is given", ->
       atom.config.set("foo.bar.baz", 42, source: 'some-other-source', scopeSelector: '.a')
+      advanceClock(500)
       expect(atom.config.save).not.toHaveBeenCalled()
 
     it "does not allow a 'source' option without a 'scopeSelector'", ->
@@ -197,6 +193,7 @@ describe "Config", ->
       atom.config.save.reset()
 
       atom.config.unset('a.c')
+      advanceClock(500)
       expect(atom.config.save.callCount).toBe 1
 
     describe "when a 'source' and no 'scopeSelector' is given", ->
@@ -692,6 +689,15 @@ describe "Config", ->
     describe ".observeUserConfig()", ->
       updatedHandler = null
 
+      writeConfigFile = (data) ->
+        previousSetTimeoutCallCount = setTimeout.callCount
+        runs ->
+          fs.writeFileSync(atom.config.configFilePath, data)
+        waitsFor "debounced config file load", ->
+          setTimeout.callCount > previousSetTimeoutCallCount
+        runs ->
+          advanceClock(1000)
+
       beforeEach ->
         atom.config.setSchema 'foo',
           type: 'object'
@@ -728,7 +734,7 @@ describe "Config", ->
 
       describe "when the config file changes to contain valid cson", ->
         it "updates the config data", ->
-          fs.writeFileSync(atom.config.configFilePath, "foo: { bar: 'quux', baz: 'bar'}")
+          writeConfigFile("foo: { bar: 'quux', baz: 'bar'}")
           waitsFor 'update event', -> updatedHandler.callCount > 0
           runs ->
             expect(atom.config.get('foo.bar')).toBe 'quux'
@@ -737,8 +743,9 @@ describe "Config", ->
         it "does not fire a change event for paths that did not change", ->
           atom.config.onDidChange 'foo.bar', noChangeSpy = jasmine.createSpy()
 
-          fs.writeFileSync(atom.config.configFilePath, "foo: { bar: 'baz', baz: 'ok'}")
+          writeConfigFile("foo: { bar: 'baz', baz: 'ok'}")
           waitsFor 'update event', -> updatedHandler.callCount > 0
+
           runs ->
             expect(noChangeSpy).not.toHaveBeenCalled()
             expect(atom.config.get('foo.bar')).toBe 'baz'
@@ -750,7 +757,8 @@ describe "Config", ->
               type: 'array'
               items:
                 type: 'string'
-            fs.writeFileSync(atom.config.configFilePath, "foo: { bar: ['baz', 'ok']}")
+
+            writeConfigFile("foo: { bar: ['baz', 'ok']}")
             waitsFor 'update event', -> updatedHandler.callCount > 0
             runs -> updatedHandler.reset()
 
@@ -758,8 +766,9 @@ describe "Config", ->
             noChangeSpy = jasmine.createSpy()
             atom.config.onDidChange('foo.bar', noChangeSpy)
 
-            fs.writeFileSync(atom.config.configFilePath, "foo: { bar: ['baz', 'ok'], baz: 'another'}")
+            writeConfigFile("foo: { bar: ['baz', 'ok'], baz: 'another'}")
             waitsFor 'update event', -> updatedHandler.callCount > 0
+
             runs ->
               expect(noChangeSpy).not.toHaveBeenCalled()
               expect(atom.config.get('foo.bar')).toEqual ['baz', 'ok']
@@ -770,12 +779,13 @@ describe "Config", ->
             scopedSpy = jasmine.createSpy()
             atom.config.onDidChange('foo.scoped', scope: ['.source.ruby'], scopedSpy)
 
-            fs.writeFileSync atom.config.configFilePath, """
+            writeConfigFile """
               global:
                 foo:
                   scoped: false
             """
             waitsFor 'update event', -> updatedHandler.callCount > 0
+
             runs ->
               expect(scopedSpy).toHaveBeenCalled()
               expect(atom.config.get('foo.scoped', scope: ['.source.ruby'])).toBe false
@@ -784,7 +794,7 @@ describe "Config", ->
             noChangeSpy = jasmine.createSpy()
             atom.config.onDidChange('foo.scoped', scope: ['.source.ruby'], noChangeSpy)
 
-            fs.writeFileSync atom.config.configFilePath, """
+            writeConfigFile """
               global:
                 foo:
                   bar: 'baz'
@@ -793,6 +803,7 @@ describe "Config", ->
                   scoped: true
             """
             waitsFor 'update event', -> updatedHandler.callCount > 0
+
             runs ->
               expect(noChangeSpy).not.toHaveBeenCalled()
               expect(atom.config.get('foo.bar', scope: ['.source.ruby'])).toBe 'baz'
@@ -800,7 +811,7 @@ describe "Config", ->
 
       describe "when the config file changes to omit a setting with a default", ->
         it "resets the setting back to the default", ->
-          fs.writeFileSync(atom.config.configFilePath, "foo: { baz: 'new'}")
+          writeConfigFile("foo: { baz: 'new'}")
           waitsFor 'update event', -> updatedHandler.callCount > 0
           runs ->
             expect(atom.config.get('foo.bar')).toBe 'def'
@@ -808,19 +819,20 @@ describe "Config", ->
 
       describe "when the config file changes to be empty", ->
         beforeEach ->
-          fs.writeFileSync(atom.config.configFilePath, "")
+          writeConfigFile("")
           waitsFor 'update event', -> updatedHandler.callCount > 0
 
         it "resets all settings back to the defaults", ->
           expect(updatedHandler.callCount).toBe 1
           expect(atom.config.get('foo.bar')).toBe 'def'
           atom.config.set("hair", "blonde") # trigger a save
+          advanceClock(500)
           expect(atom.config.save).toHaveBeenCalled()
 
         describe "when the config file subsequently changes again to contain configuration", ->
           beforeEach ->
             updatedHandler.reset()
-            fs.writeFileSync(atom.config.configFilePath, "foo: bar: 'newVal'")
+            writeConfigFile("foo: bar: 'newVal'")
             waitsFor 'update event', -> updatedHandler.callCount > 0
 
           it "sets the setting to the value specified in the config file", ->
@@ -829,7 +841,7 @@ describe "Config", ->
       describe "when the config file changes to contain invalid cson", ->
         beforeEach ->
           spyOn(console, 'error')
-          fs.writeFileSync(atom.config.configFilePath, "}}}")
+          writeConfigFile("}}}")
           waitsFor "error to be logged", -> console.error.callCount > 0
 
         it "logs a warning and does not update config data", ->
@@ -840,11 +852,12 @@ describe "Config", ->
 
         describe "when the config file subsequently changes again to contain valid cson", ->
           beforeEach ->
-            fs.writeFileSync(atom.config.configFilePath, "foo: bar: 'newVal'")
+            writeConfigFile("foo: bar: 'newVal'")
             waitsFor 'update event', -> updatedHandler.callCount > 0
 
           it "updates the config data and resumes saving", ->
             atom.config.set("hair", "blonde")
+            advanceClock(500)
             expect(atom.config.save).toHaveBeenCalled()
 
     describe ".initializeConfigDirectory()", ->

@@ -318,6 +318,9 @@ class Config
     @configFilePath ?= path.join(@configDirPath, 'config.cson')
     @transactDepth = 0
 
+    @debouncedSave = _.debounce(@save, 100)
+    @debouncedLoad = _.debounce(@loadUserConfig, 100)
+
   ###
   Section: Config Subscription
   ###
@@ -564,7 +567,7 @@ class Config
     else
       @setRawValue(keyPath, value)
 
-    @save() if source is @getUserConfigPath() and shouldSave and not @configFileHasErrors
+    @debouncedSave() if source is @getUserConfigPath() and shouldSave and not @configFileHasErrors
     true
 
   # Essential: Restore the setting at `keyPath` to its default value.
@@ -797,7 +800,7 @@ class Config
   observeUserConfig: ->
     try
       @watchSubscription ?= pathWatcher.watch @configFilePath, (eventType) =>
-        @loadUserConfig() if eventType is 'change' and @watchSubscription?
+        @debouncedLoad() if eventType is 'change' and @watchSubscription?
     catch error
       @notifyFailure('Failed to watch user config', error)
 
